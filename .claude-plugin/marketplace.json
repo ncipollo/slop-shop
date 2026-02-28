@@ -1,0 +1,16 @@
+{
+  "name": "slop-shop",
+  "owner": { "name": "Nick Cipollo" },
+  "metadata": {
+    "description": "A collection of development workflow plugins for Claude Code",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "workflow",
+      "source": "./workflow/",
+      "description": "Development workflow skills for starting tickets and addressing PR feedback",
+      "version": "1.0.0"
+    }
+  ]
+}
