@@ -240,15 +240,17 @@ main() {
     log_verbose "should_fix: $should_fix"
 
     # Step 8: Output JSON to stdout
-    python3 - <<PYEOF
-import json
+    python3 - "$should_fix" "$issue_number" "$current_branch" "$default_branch" "$commits_on_branch" <<'PYEOF'
+import json, sys
+
+should_fix_str, issue_number_str, branch, default_branch, commits_str = sys.argv[1:]
 
 data = {
-    "should_fix": $should_fix,
-    "issue_number": $([ -n "$issue_number" ] && echo "$issue_number" || echo "null"),
-    "branch": "$current_branch",
-    "default_branch": "$default_branch",
-    "commits_on_branch": $commits_on_branch
+    "should_fix": should_fix_str == "true",
+    "issue_number": int(issue_number_str) if issue_number_str else None,
+    "branch": branch,
+    "default_branch": default_branch,
+    "commits_on_branch": int(commits_str)
 }
 
 print(json.dumps(data, indent=2))

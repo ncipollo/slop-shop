@@ -1,4 +1,56 @@
-# should-fix.sh - Commit Fix Prefix Detection Script
+# Commit Skill Scripts
+
+Scripts used by the `commit` skill to automate staging, committing, pushing, and fix-prefix detection.
+
+---
+
+## commit-and-push.sh
+
+Stages all changes, commits with the provided message, and pushes to the remote. This is the main action script invoked by the skill after the commit message has been generated.
+
+### Usage
+
+```bash
+./scripts/commit-and-push.sh "<commit message>"
+```
+
+Run from the user's git repository directory.
+
+### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `<commit message>` | The commit message to use (required) |
+
+### Examples
+
+```bash
+./scripts/commit-and-push.sh "Fixes #42 Add user authentication"
+./scripts/commit-and-push.sh "#42 Fix token expiry edge case"
+./scripts/commit-and-push.sh "Update README"
+```
+
+### What It Does
+
+1. Validates the current directory is a git repository
+2. Checks that there are changes to commit
+3. Stages all changes with `git add -A`
+4. Commits with the provided message
+5. Pushes the current branch to the remote (sets upstream automatically on first push)
+
+### Exit Codes
+
+| Code | Meaning | Description |
+|------|---------|-------------|
+| 0 | Success | Changes staged, committed, and pushed |
+| 1 | Not a git repo | Current directory is not a git repository |
+| 2 | Nothing to commit | Working directory is clean |
+| 3 | Commit failed | Check for pre-commit hook failures or other git errors |
+| 4 | Push failed | Check remote configuration or authentication |
+
+---
+
+## should-fix.sh - Commit Fix Prefix Detection Script
 
 Determines whether a commit message should include a `Fixes #<num>` prefix, based on the current branch name and commit count vs. the default branch.
 

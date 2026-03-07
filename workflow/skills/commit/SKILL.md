@@ -3,31 +3,30 @@ name: commit
 description: |
   Use this skill when the user wants to commit their work, saying "commit",
   "commit my work", "commit my changes", "make a commit", "save my progress",
-  or similar. Stages changes, generates a smart commit message, and commits —
-  automatically prefixing "Fixes #<num>" on the first commit of a feature
-  branch to auto-close the GitHub issue on merge.
-version: 1.0.0
+  or similar. Stages changes, generates a smart commit message, commits, and
+  pushes — automatically prefixing "Fixes #<num>" on the first commit of a
+  feature branch to auto-close the GitHub issue on merge.
+version: 1.1.0
 ---
 
 # Commit Skill
 
-Automate committing work with smart commit message formatting — detecting whether to include a `Fixes #<num>` prefix based on the current branch and commit history.
+Automate committing and pushing work with smart commit message formatting — detecting whether to include a `Fixes #<num>` prefix based on the current branch and commit history.
 
 ## Overview
 
 This skill handles the full commit workflow:
 1. Determine whether the commit message should include a fix prefix
-2. Check the working directory state
-3. Stage the appropriate files
-4. Generate a clear commit message
-5. Commit and verify
+2. Inspect the staged diff to understand what changed
+3. Generate a clear commit message
+4. Run `commit-and-push.sh` with the message — which stages all changes, commits, and pushes
 
 ## When to Use This Skill
 
 Use this skill when:
 - User says "commit", "commit my work", or "commit my changes"
 - User says "make a commit" or "save my progress"
-- User says "commit and push" (commit first, then push separately)
+- User says "commit and push"
 - User wants changes committed with a meaningful message
 
 ## Workflow Steps
@@ -66,39 +65,12 @@ On success (exit code 0), the script outputs JSON to stdout:
 
 Parse `should_fix`, `issue_number`, and `commits_on_branch` from this output.
 
-### Step 2: Check Working Directory
+### Step 2: Generate Commit Message
 
-Run `git status` to understand the state of the working directory.
-
-**States to handle:**
-- **Nothing to commit** — Inform user there is nothing to commit and stop
-- **Staged changes only** — Proceed directly to commit message generation
-- **Unstaged changes only** — Ask user which files to stage, or stage all with `git add -A`
-- **Mixed staged + unstaged** — Show what's staged, ask if user wants to stage more
-
-### Step 3: Stage Changes
-
-Based on user input and the working directory state:
+Inspect the working tree diff to understand what changed:
 
 ```bash
-# Stage all changes
-git add -A
-
-# Stage specific files
-git add <file1> <file2>
-
-# Stage by pattern
-git add src/
-```
-
-Confirm what is staged by running `git diff --cached --stat` and presenting the summary to the user.
-
-### Step 4: Generate Commit Message
-
-Analyze the staged diff to understand what changed:
-
-```bash
-git diff --cached
+git diff HEAD
 ```
 
 Based on the diff, generate a concise commit message summary (imperative mood, present tense — e.g., "Add user authentication", not "Added user authentication").
@@ -116,17 +88,27 @@ Based on the diff, generate a concise commit message summary (imperative mood, p
 - Second commit on same branch: `#42 Fix token expiry edge case`
 - Commit on `main` or branchless: `Update dependencies`
 
-Present the generated message to the user before committing. Allow them to confirm or suggest changes.
+### Step 3: Commit and Push
 
-### Step 5: Commit
-
-Once the commit message is approved:
+Run the `commit-and-push.sh` script from the **user's current working directory**, passing the generated commit message:
 
 ```bash
-git commit -m "<message>"
+${CLAUDE_PLUGIN_ROOT}/skills/commit/scripts/commit-and-push.sh "<commit message>"
 ```
 
-Verify success by running `git status` and reporting the result to the user. Show the commit hash with `git log --oneline -1`.
+**IMPORTANT:** Execute from the user's working directory, NOT the skill directory.
+
+The script will:
+- Stage all changes (`git add -A`)
+- Commit with the provided message
+- Push to the remote (setting upstream automatically on first push)
+
+Handle exit codes:
+- **Exit code 0** — Success; report the result to the user
+- **Exit code 1** — Not a git repo (should not happen if Step 1 passed)
+- **Exit code 2** — Nothing to commit; inform the user and stop
+- **Exit code 3** — Commit failed; report the error output to the user
+- **Exit code 4** — Push failed; report the error output to the user
 
 ---
 
@@ -138,13 +120,16 @@ Current directory is not a git repository.
 Please navigate to your project directory first.
 ```
 
-**Nothing to commit:**
+**Nothing to commit (commit-and-push.sh exit code 2):**
 ```
 Nothing to commit — working directory is clean.
 ```
 
-**Commit fails:**
+**Commit fails (commit-and-push.sh exit code 3):**
 Check for common causes (pre-commit hooks, locked files, empty staged changes) and report the error output to the user.
+
+**Push fails (commit-and-push.sh exit code 4):**
+Report the error output to the user. Common causes: no remote configured, authentication issues, or rejected push due to diverged history.
 
 ---
 
@@ -156,13 +141,10 @@ User: "Commit my work"
 
 Agent workflow:
 1. Run should-fix.sh → { should_fix: true, issue_number: 42, commits_on_branch: 0 }
-2. git status → modified files: src/auth.ts, src/login.ts
-3. git add -A
-4. git diff --cached → auth and login changes
-5. Generate: "Fixes #42 Add user authentication"
-6. Present to user, confirm
-7. git commit -m "Fixes #42 Add user authentication"
-8. Verify with git status + git log --oneline -1
+2. git diff HEAD → auth and login changes
+3. Generate: "Fixes #42 Add user authentication"
+4. Run commit-and-push.sh "Fixes #42 Add user authentication"
+   → git add -A, git commit, git push
 ```
 
 **Example 2: Follow-up Commit on Same Branch**
@@ -171,12 +153,9 @@ User: "Commit my changes"
 
 Agent workflow:
 1. Run should-fix.sh → { should_fix: false, issue_number: 42, commits_on_branch: 1 }
-2. git status → modified: src/auth.ts
-3. git add -A
-4. git diff --cached → token expiry fix
-5. Generate: "#42 Fix token expiry edge case"
-6. Present to user, confirm
-7. git commit -m "#42 Fix token expiry edge case"
+2. git diff HEAD → token expiry fix
+3. Generate: "#42 Fix token expiry edge case"
+4. Run commit-and-push.sh "#42 Fix token expiry edge case"
 ```
 
 **Example 3: Commit on Main Branch**
@@ -186,10 +165,9 @@ User: "Commit my work"
 Agent workflow:
 1. Run should-fix.sh → exit code 2 (on default branch)
 2. Proceed without fix prefix
-3. git status → modified: README.md
-4. git add -A
-5. Generate: "Update README"
-6. git commit -m "Update README"
+3. git diff HEAD → README changes
+4. Generate: "Update README"
+5. Run commit-and-push.sh "Update README"
 ```
 
 **Example 4: No Issue Number in Branch**
@@ -199,6 +177,7 @@ User: "Commit"
 Agent workflow:
 1. Run should-fix.sh → { should_fix: false, issue_number: null, commits_on_branch: 0 }
 2. Proceed without any prefix
-3. git status, stage, generate: "Add dark mode toggle"
-4. git commit -m "Add dark mode toggle"
+3. git diff HEAD → dark mode toggle changes
+4. Generate: "Add dark mode toggle"
+5. Run commit-and-push.sh "Add dark mode toggle"
 ```
