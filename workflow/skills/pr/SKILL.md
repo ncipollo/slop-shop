@@ -4,7 +4,7 @@ description: |
   Use this skill when the user wants to open a pull request, saying "open a PR",
   "create a PR", "make a pull request", "submit a PR", "push up a PR",
   or similar. Gathers branch context, drafts a concise PR title and description,
-  confirms with the user, then creates the PR via gh CLI.
+  then creates the PR via gh CLI.
 version: 1.0.0
 ---
 
@@ -18,8 +18,7 @@ This skill handles the full PR creation workflow:
 1. Gather branch context (commits, diff, existing PR)
 2. Derive a title from the top commit, adjusting if there's topic drift across commits
 3. Draft a description in the standard format
-4. Confirm with the user
-5. Push the branch if needed, then create the PR
+4. Push the branch if needed, then create the PR
 
 ## When to Use This Skill
 
@@ -128,17 +127,7 @@ Write a complete draft using the PR body format above.
 - Note edge cases handled or explicitly deferred
 - Mention any follow-up work that was intentionally left out of scope
 
-### Step 5: Confirm with the User
-
-Present the full draft (title + body) before touching GitHub:
-
-> Here's the draft PR. Let me know if you'd like any changes before I open it.
-
-If the user requests changes, revise and re-show. Repeat until the user approves.
-
-Do NOT create the PR until the user explicitly approves ("yes", "looks good", "go ahead", "ship it", or equivalent).
-
-### Step 6: Push and Create
+### Step 5: Push and Create
 
 **Ensure the branch is pushed:**
 ```bash
@@ -211,9 +200,8 @@ Agent workflow:
    - Summary: "Adds a dark mode toggle to the settings panel. Users can now switch themes without reloading."
    - Bullets: theme config, Toggle component, persistence via localStorage
    - Agent Context: file paths, theme system constraints, Closes #42
-6. Show draft → user approves
-7. git push --set-upstream origin feature/42-dark-mode
-8. gh pr create → https://github.com/owner/repo/pull/58
+6. git push --set-upstream origin feature/42-dark-mode
+7. gh pr create → https://github.com/owner/repo/pull/58
 ```
 
 **Example 2: Multi-commit branch with drift**
@@ -229,9 +217,7 @@ Agent workflow:
 3. Title derived: "Add retry logic to network client and fix test flakiness"
    (top commit subject, slightly broadened)
 4. Draft body captures all three concerns in bullets
-5. User says "shorten the title"
-6. Revised: "Add network retry logic"
-7. User approves → push + gh pr create
+5. push + gh pr create
 ```
 
 **Example 3: Existing PR found**
@@ -240,8 +226,7 @@ User: "Push up a PR"
 
 Agent workflow:
 1. gh pr view → PR #31 already exists: "Add dark mode"
-2. Inform user: "PR #31 is already open (https://github.com/.../pull/31). Want me to update its description?"
-3. User: "yes, update it"
-4. Draft new description from current diff
-5. Confirm → gh pr edit 31
+2. Inform user: "PR #31 is already open (https://github.com/.../pull/31). Updating the description."
+3. Draft new description from current diff
+4. gh pr edit 31
 ```

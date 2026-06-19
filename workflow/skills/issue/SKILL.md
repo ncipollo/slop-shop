@@ -6,7 +6,7 @@ description: |
   "refine issue #<num>", "reformat issue #<num>", "update issue #<num>",
   "fix up this issue", "address issue feedback", "make an issue for X",
   or similar. Gathers repo context, drafts or rewrites the issue in a
-  structured format, confirms with the user, then creates or updates via gh CLI.
+  structured format, then creates or updates via gh CLI.
 version: 1.0.0
 ---
 
@@ -21,7 +21,7 @@ This skill handles three modes of issue work:
 - **Reformat** — take a rough or unstructured existing issue and rewrite it into the standard format
 - **Update** — incorporate feedback or new information into an existing issue's content
 
-All three modes follow the same core loop: gather context → draft → confirm → publish.
+All three modes follow the same core loop: gather context → draft → publish.
 
 ## When to Use This Skill
 
@@ -121,17 +121,7 @@ Write a complete draft — title and body — using the format above.
 - Surface any context from issue comments that adds implementation detail
 - If there's existing code to change, describe the current behavior concisely
 
-### Step 5: Confirm with the User
-
-Present the full draft (title + body) before touching GitHub:
-
-> Here's the draft. Let me know if you'd like any changes before I publish it.
-
-If the user requests changes, revise and re-show. Repeat until the user approves.
-
-Do NOT create or update the issue until the user explicitly approves (a "yes", "looks good", "go ahead", "publish it", or equivalent).
-
-### Step 6: Publish
+### Step 5: Publish
 
 **Creating a new issue:**
 ```bash
@@ -189,8 +179,7 @@ Agent workflow:
 1. git log, gh issue list → no existing dark mode issue
 2. Check CLAUDE.md → finds theming system in src/theme/
 3. Draft title + body in standard format
-4. Show draft to user → user approves
-5. gh issue create → https://github.com/owner/repo/issues/57
+4. gh issue create → https://github.com/owner/repo/issues/57
 ```
 
 **Example 2: Reformat a rough existing issue**
@@ -204,9 +193,7 @@ Agent workflow:
    - Write summary paragraph from the rough description
    - Extract 3-4 bullets from the intent
    - Populate Agent Context with file paths and constraints from repo
-4. Show draft → user says "add a note about RTL support"
-5. Revise Agent Context to mention RTL
-6. User approves → gh issue edit 23
+4. gh issue edit 23
 ```
 
 **Example 3: Update issue with feedback**
@@ -218,8 +205,7 @@ Agent workflow:
 2. Identifies where Redis is mentioned in Agent Context
 3. Replaces Redis references with the existing cache layer approach
 4. Notes the decision with brief rationale in Agent Context
-5. Show revised draft → user approves
-6. gh issue edit 31
+5. gh issue edit 31
 ```
 
 **Example 4: Vague create request**
@@ -231,5 +217,5 @@ Agent workflow:
 2. User: "the login is broken on Safari"
 3. Gather context → find auth code in src/auth/
 4. Draft issue with specific Safari/auth context
-5. Confirm and create
+5. gh issue create
 ```
