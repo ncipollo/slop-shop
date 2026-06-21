@@ -1,5 +1,5 @@
 {
   "name": "workflow",
   "description": "Development workflow skills for starting tickets, addressing PR feedback, committing work with smart commit message formatting, creating or refining GitHub issues, and opening pull requests",
-  "version": "1.3.0"
+  "version": "1.4.0"
 }
