@@ -91,18 +91,18 @@ If `gh pr view` succeeds (exit code 0), a PR already exists. In that case:
 ### Step 3: Derive the Title
 
 **Single commit on branch:**
-Strip any issue prefix (`Fixes #<n>`, `#<n>`) from the commit subject and use the remainder as the title.
+Use the first (and only) commit subject verbatim as the title — preserve any issue or ticket reference (e.g., `Fixes #42`, `#42`, `[PROJ-123]`).
 
 **Multiple commits on branch:**
-- Start with the most recent commit subject (stripped of issue prefix)
+- Use the **first** (oldest) commit subject as the title — this is the commit that established the purpose of the branch and typically contains the issue or ticket reference
+- Preserve the commit message as-is, including any issue/ticket prefix
 - Read all commit subjects and the full diff to check for topic drift
-- If the commits cover a single coherent theme, the top commit title is fine
-- If the commits have drifted (e.g., started as "Add auth" but later commits added "Fix tests" and "Update docs"), derive a broader title that captures the overall scope
+- If later commits have significantly broadened the scope, append a brief qualifier to the first commit title rather than replacing it
 
 **Title rules:**
-- Imperative mood: "Add X", "Fix Y", "Refactor Z"
-- Under 72 characters
-- No issue number prefix (GitHub links the PR to the issue via branch name or commit body)
+- Preserve the first commit message verbatim when possible
+- Keep issue/ticket references (e.g., `Fixes #42`, `#42`, `[PROJ-123]`) — they link the PR to the issue
+- Under 72 characters; trim only if needed, keeping the issue reference intact
 - Specific enough to be meaningful in a changelog
 
 ### Step 4: Draft the Description
@@ -111,7 +111,7 @@ Write a complete draft using the PR body format above.
 
 **Summary paragraph guidance:**
 - Describe what the PR does and the motivation, not the implementation steps
-- If the branch name contains an issue number, reference it naturally ("Closes #42") — but do not add a bare "Fixes #42" line; that belongs in commit messages
+- If the first commit message or branch name contains an issue number, reference it naturally ("Closes #42") in the summary — the issue reference in the PR title (from the first commit) already links the PR to the issue
 
 **Bullets guidance:**
 - Derive from the diff and commit list
@@ -195,7 +195,7 @@ Agent workflow:
 1. git log main..HEAD → 1 commit: "Fixes #42 Add dark mode toggle"
 2. git diff main..HEAD → changes in src/theme/, src/components/Toggle.tsx
 3. gh pr view → no existing PR
-4. Title: "Add dark mode toggle" (strip Fixes #42)
+4. Title: "Fixes #42 Add dark mode toggle" (first commit message preserved as-is)
 5. Draft body:
    - Summary: "Adds a dark mode toggle to the settings panel. Users can now switch themes without reloading."
    - Bullets: theme config, Toggle component, persistence via localStorage
@@ -209,13 +209,12 @@ Agent workflow:
 User: "Create a PR"
 
 Agent workflow:
-1. git log main..HEAD →
-   - "#12 Add retry logic to network client"
+1. git log main..HEAD (oldest → newest) →
+   - "#12 Add retry logic to network client"   ← first commit
    - "#12 Fix test flakiness in NetworkClientTest"
    - "#12 Update changelog"
-2. Commits span retry logic + test fixes + docs → slight drift
-3. Title derived: "Add retry logic to network client and fix test flakiness"
-   (top commit subject, slightly broadened)
+2. Use the first commit subject as title (preserving issue reference)
+3. Title: "#12 Add retry logic to network client"
 4. Draft body captures all three concerns in bullets
 5. push + gh pr create
 ```
