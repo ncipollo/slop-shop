@@ -2,7 +2,7 @@
 name: pr
 description: |
   Use this skill when the user wants to open a pull request, saying "open a PR",
-  "create a PR", "make a pull request", "submit a PR", "push up a PR",
+  "create a PR", "make a pull request", "submit a PR", "push up a PR", "push pr"
   or similar. Gathers branch context, drafts a concise PR title and description,
   then creates the PR via gh CLI.
 version: 1.0.0
@@ -23,7 +23,7 @@ This skill handles the full PR creation workflow:
 ## When to Use This Skill
 
 Use this skill when:
-- User says "open a PR", "create a PR", "make a pull request", "submit a PR"
+- User says "open a PR", "create a PR", "make a pull request", "submit a PR", "push pr"
 - User says "push up a PR", "open a pull request", "send a PR"
 - User says "PR this", "ship a PR", "put up a PR"
 - User wants the current branch submitted for review
