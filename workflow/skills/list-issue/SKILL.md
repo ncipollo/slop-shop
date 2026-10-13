@@ -4,21 +4,21 @@ description: |
   Use this skill when the user wants to see the GitHub issues assigned to
   them, saying "list my issues", "show my assigned issues", "what issues
   do I have", "what's on my plate", "show open issues assigned to me",
-  or similar. Fetches all open issues assigned to the authenticated gh
-  user across every accessible repository and renders them as an
-  interactive artifact.
+  or similar. Fetches all open issues assigned to or authored by the
+  authenticated gh user across every accessible repository, sorted by
+  most recent activity, and renders them as an interactive artifact.
 version: 1.0.0
 ---
 
 # List Issue Skill
 
-Show the user every open GitHub issue assigned to them, across all repositories they can access, as a clickable table artifact — with a one-click path into the `start-ticket` skill for whichever issue they want to pick up next.
+Show the user every open GitHub issue assigned to or authored by them, across all repositories they can access, as a clickable table artifact — with a one-click path into the `start-ticket` skill for whichever issue they want to pick up next.
 
 ## Overview
 
 This skill handles the full issue-triage workflow:
-1. Fetch all open issues assigned to the authenticated `gh` user (via the fetch script)
-2. Build and publish a claude.ai Artifact rendering them as a sortable table
+1. Fetch all open issues assigned to or authored by the authenticated `gh` user, sorted by most recent activity (via the fetch script)
+2. Build and publish a claude.ai Artifact rendering them as a table grouped by repo
 3. Tell the user how to jump from a row straight into `start-ticket`
 
 ## When to Use This Skill
@@ -34,7 +34,7 @@ A published Artifact is a sandboxed web page with no mechanism to call back into
 
 ## Workflow Steps
 
-### Step 1: Fetch Assigned Issues
+### Step 1: Fetch Relevant Issues
 
 Run the fetch script from the **user's current working directory**, using the full path:
 
@@ -47,7 +47,7 @@ For verbose output during debugging:
 ${CLAUDE_PLUGIN_ROOT}/skills/list-issue/scripts/fetch-assigned-issues.sh --verbose
 ```
 
-**IMPORTANT:** Execute from the user's working directory, NOT the skill directory. This search spans every repository the user can access — it is not limited to the current repo.
+**IMPORTANT:** Execute from the user's working directory, NOT the skill directory. This search spans every repository the user can access — it is not limited to the current repo. It covers issues assigned to the user AND issues they authored, since many personal workflows (e.g. self-filed backlog issues worked via `start-ticket`) never set the GitHub assignee field — assignee-only search would silently miss those.
 
 Handle exit codes before proceeding:
 - **Exit code 0** — Success, parse the JSON array from stdout
@@ -69,7 +69,7 @@ On success, stdout is a JSON array sorted by most recently updated first:
 ]
 ```
 
-If the array is empty, tell the user they have no open issues assigned and stop — do not publish an empty artifact.
+If the array is empty, tell the user they have no relevant open issues and stop — do not publish an empty artifact.
 
 ### Step 2: Build the Artifact
 
@@ -79,8 +79,8 @@ Use the `Artifact` tool. Before writing any HTML:
 
 **Content requirements:**
 - Title: something like "My Open Issues".
-- One row per issue: repo (`repo`), issue number linked to `url`, title, labels (as small tags), and relative/human-readable `updatedAt`.
-- Sort as given (already most-recently-updated first); a client-side sort-by-column affordance is a nice-to-have, not required.
+- Group rows by repo (`repo`), with each group's issue count shown. Order the groups by their most-recently-updated issue first (i.e. just take the groups in the order their first member appears in the already-sorted input — don't re-sort groups alphabetically). Within a group, keep the given order (most-recently-updated first).
+- Each row: issue number linked to `url`, title, labels (as small tags), and relative/human-readable `updatedAt`.
 - Each row has a **Start** button. On click, it copies the following string to the clipboard and shows a brief "Copied!" confirmation on the button itself:
   ```
   start ticket <issue-url>
@@ -114,7 +114,7 @@ Publish with the `Artifact` tool, then `action: "open"` so the user sees it imme
 ### Step 3: Explain the Hand-off
 
 After opening the artifact, tell the user:
-- How many open issues are assigned to them
+- How many relevant open issues were found, and across how many repos
 - That clicking **Start** on a row copies a `start ticket <url>` command to their clipboard
 - That pasting it back into the chat will run the `start-ticket` skill for that issue
 
@@ -134,14 +134,14 @@ Not authenticated with the gh CLI. Run: gh auth login
 
 **Fetch failed (exit code 3):**
 ```
-Failed to fetch your assigned issues from GitHub. This may be a network issue or API error.
+Failed to fetch your issues from GitHub. This may be a network issue or API error.
 Try running manually with --verbose:
   ${CLAUDE_PLUGIN_ROOT}/skills/list-issue/scripts/fetch-assigned-issues.sh --verbose
 ```
 
-**No issues assigned:**
+**No relevant issues:**
 ```
-You have no open issues currently assigned to you.
+You have no open issues currently assigned to or authored by you.
 ```
 
 ---
@@ -157,17 +157,17 @@ Agent workflow:
 2. Artifact quickstart (intent: other) → load artifact-design skill
 3. Publish table artifact "My Open Issues" with a Start button per row
 4. Open the artifact
-5. Tell user: "You have 12 open issues assigned across 4 repos. Click Start
+5. Tell user: "You have 12 relevant open issues across 4 repos. Click Start
    on any row to copy a start-ticket command, then paste it here to begin."
 ```
 
-**Example 2: No issues assigned**
+**Example 2: No relevant issues**
 ```
 User: "What's on my plate?"
 
 Agent workflow:
 1. Run fetch-assigned-issues.sh → []
-2. Inform user: "You have no open issues currently assigned to you."
+2. Inform user: "You have no open issues currently assigned to or authored by you."
    (no artifact published)
 ```
 

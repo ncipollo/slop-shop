@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 
-# fetch-assigned-issues.sh - Fetch open GitHub issues assigned to the current user
+# fetch-assigned-issues.sh - Fetch open GitHub issues relevant to the current user
 # Part of the list-issue skill for Claude Code
 #
 # Searches across all repositories the authenticated gh user can access for
-# open issues assigned to them, outputting structured JSON to stdout for
-# Claude to consume when building the issue list artifact.
+# open issues either assigned to them or authored by them — many personal
+# workflows (e.g. self-filed backlog issues worked via start-ticket) never
+# set the GitHub assignee field, so assignee-only search misses real work —
+# merges and de-duplicates the two result sets, and outputs structured JSON
+# to stdout, sorted most-recently-updated first.
 
 set -o pipefail
 
@@ -60,8 +63,9 @@ show_usage() {
     cat <<EOF
 Usage: $(basename "$0") [options]
 
-Fetch open GitHub issues assigned to the authenticated gh user, across all
-accessible repositories, and output structured JSON.
+Fetch open GitHub issues relevant to the authenticated gh user — either
+assigned to them or authored by them — across all accessible repositories,
+and output structured JSON sorted by most recent activity.
 
 Options:
   --verbose, -v       Enable verbose output (to stderr)
@@ -122,28 +126,43 @@ validate_gh_auth() {
 # Issue Fetching
 # ============================================================================
 
-fetch_assigned_issues() {
-    log_verbose "Searching for open issues assigned to @me (limit $RESULT_LIMIT)..."
+readonly NORMALIZE_FILTER='[.[] | {
+    number: .number,
+    title: .title,
+    url: .url,
+    repo: .repository.nameWithOwner,
+    updatedAt: .updatedAt,
+    labels: [.labels[].name]
+}]'
 
-    local normalize_filter='[.[] | {
-        number: .number,
-        title: .title,
-        url: .url,
-        repo: .repository.nameWithOwner,
-        updatedAt: .updatedAt,
-        labels: [.labels[].name]
-    }]'
+# gh search issues has no OR syntax across qualifier types (assignee vs.
+# author), so each is queried separately and the results are merged below.
+fetch_issues_by_qualifier() {
+    local qualifier="$1"
+    local label="$2"
+
+    log_verbose "Searching for open issues $label (limit $RESULT_LIMIT)..."
 
     local output
     if ! output=$(gh search issues \
-        --assignee=@me \
+        "$qualifier" \
         --state=open \
         --sort updated \
         --order desc \
         -L "$RESULT_LIMIT" \
         --json number,title,url,repository,updatedAt,labels \
-        --jq "$normalize_filter" 2>/dev/null); then
-        log_error "Failed to search GitHub issues"
+        --jq "$NORMALIZE_FILTER" 2>/dev/null); then
+        log_error "Failed to search GitHub issues ($label)"
+        return 1
+    fi
+
+    echo "$output"
+}
+
+fetch_relevant_issues() {
+    local assigned authored
+
+    if ! assigned=$(fetch_issues_by_qualifier "--assignee=@me" "assigned to @me"); then
         log_error ""
         log_error "This may be a network issue or a GitHub API error."
         log_error "Try running manually with --verbose for details:"
@@ -151,7 +170,18 @@ fetch_assigned_issues() {
         return $EXIT_FETCH_FAILED
     fi
 
-    echo "$output"
+    if ! authored=$(fetch_issues_by_qualifier "--author=@me" "authored by @me"); then
+        log_error ""
+        log_error "This may be a network issue or a GitHub API error."
+        log_error "Try running manually with --verbose for details:"
+        log_error "  $(basename "$0") --verbose"
+        return $EXIT_FETCH_FAILED
+    fi
+
+    log_verbose "Merging and de-duplicating results, sorting by most recent activity..."
+
+    jq -s 'add | unique_by(.url) | sort_by(.updatedAt) | reverse' \
+        <(echo "$assigned") <(echo "$authored")
 }
 
 # ============================================================================
@@ -184,11 +214,11 @@ main() {
     validate_gh_auth || exit $?
 
     local output
-    output=$(fetch_assigned_issues) || exit $?
+    output=$(fetch_relevant_issues) || exit $?
 
     local count
     count=$(echo "$output" | jq 'length' 2>/dev/null || echo "?")
-    log_info "Fetched $count assigned open issue(s)"
+    log_info "Fetched $count relevant open issue(s)"
 
     echo "$output"
 
