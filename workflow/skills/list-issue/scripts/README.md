@@ -1,6 +1,6 @@
 # fetch-assigned-issues.sh
 
-Fetches open GitHub issues relevant to the authenticated `gh` user — either assigned to them or authored by them — across all repositories they can access, and outputs structured JSON to stdout.
+Fetches open GitHub issues relevant to the authenticated `gh` user — either assigned to them or authored by them — across all non-archived repositories they can access, and outputs structured JSON to stdout.
 
 Part of the `list-issue` Claude Code skill.
 
@@ -85,7 +85,7 @@ All status/info messages are written to **stderr** so they don't pollute the JSO
 ## How It Works
 
 1. **Validates** the environment (gh installed, gh authenticated)
-2. **Searches twice**: `gh search issues --assignee=@me --state=open` and `gh search issues --author=@me --state=open`, each spanning every repository the user can access — not just the current directory's repo. Two separate queries are needed because `gh search issues` has no OR syntax across qualifier types, and many personal workflows (e.g. self-filed backlog issues worked via `start-ticket`) never set the GitHub assignee field, so assignee-only search misses real work.
+2. **Searches twice**: `gh search issues --assignee=@me --state=open --archived=false` and the same with `--author=@me`, each spanning every non-archived repository the user can access — not just the current directory's repo. Two separate queries are needed because `gh search issues` has no OR syntax across qualifier types, and many personal workflows (e.g. self-filed backlog issues worked via `start-ticket`) never set the GitHub assignee field, so assignee-only search misses real work. Archived repos are excluded because their issues are read-only — nothing actionable (closing, commenting) can be done on them without first unarchiving.
 3. **Normalizes** each result shape with `gh`'s built-in `--jq` flag, flattening `repository.nameWithOwner` into `repo` and `labels[].name` into a plain string array
 4. **Merges** both result sets, de-duplicates by `url`, and re-sorts by `updatedAt` descending
 

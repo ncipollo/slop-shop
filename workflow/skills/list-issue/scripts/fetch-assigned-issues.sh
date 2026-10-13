@@ -3,12 +3,14 @@
 # fetch-assigned-issues.sh - Fetch open GitHub issues relevant to the current user
 # Part of the list-issue skill for Claude Code
 #
-# Searches across all repositories the authenticated gh user can access for
-# open issues either assigned to them or authored by them — many personal
-# workflows (e.g. self-filed backlog issues worked via start-ticket) never
-# set the GitHub assignee field, so assignee-only search misses real work —
-# merges and de-duplicates the two result sets, and outputs structured JSON
-# to stdout, sorted most-recently-updated first.
+# Searches across all non-archived repositories the authenticated gh user
+# can access for open issues either assigned to them or authored by them —
+# many personal workflows (e.g. self-filed backlog issues worked via
+# start-ticket) never set the GitHub assignee field, so assignee-only
+# search misses real work. Archived repos are excluded since their issues
+# are read-only and can't be acted on (closed, commented, etc.) without
+# first unarchiving. Merges and de-duplicates the two result sets, and
+# outputs structured JSON to stdout, sorted most-recently-updated first.
 
 set -o pipefail
 
@@ -64,8 +66,8 @@ show_usage() {
 Usage: $(basename "$0") [options]
 
 Fetch open GitHub issues relevant to the authenticated gh user — either
-assigned to them or authored by them — across all accessible repositories,
-and output structured JSON sorted by most recent activity.
+assigned to them or authored by them — across all accessible, non-archived
+repositories, and output structured JSON sorted by most recent activity.
 
 Options:
   --verbose, -v       Enable verbose output (to stderr)
@@ -147,6 +149,7 @@ fetch_issues_by_qualifier() {
     if ! output=$(gh search issues \
         "$qualifier" \
         --state=open \
+        --archived=false \
         --sort updated \
         --order desc \
         -L "$RESULT_LIMIT" \
