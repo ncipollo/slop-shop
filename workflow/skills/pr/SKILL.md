@@ -41,6 +41,13 @@ Every PR body produced by this skill MUST follow this exact structure — no dev
 - <Optional Bullet 4>
 
 <details>
+<summary>Focus Areas</summary>
+
+<Reviewer-facing complexity hotspots derived from `smell pr` output, formatted per `smell info review`. Lead with any failing --delta-* check, in bold, if present. Then bullets naming specific functions and their before/after complexity numbers. Omit this whole section if `smell` isn't available or reports nothing worth flagging.>
+
+</details>
+
+<details>
 <summary>Agent Context</summary>
 
 <Full context an agent would need to review or continue this work. Include: relevant file paths, affected components, key decisions made, related issues/PRs, architectural constraints, edge cases handled, and any "why not X" rationale. Be thorough — this section is for machines, not humans.>
@@ -52,6 +59,7 @@ Every PR body produced by this skill MUST follow this exact structure — no dev
 
 - **Summary**: 1-2 sentences max. State what changed and why it matters. No jargon, no bullets. A non-technical reviewer should understand the intent at a glance.
 - **Bullets**: 3-4 items. High-level *what* — not *how*. One complete thought per bullet. Avoid "we", "I", or action verbs like "I added"; keep them declarative ("New retry logic for flaky network calls").
+- **Focus Areas** (inside `<details>`): Generated from `smell pr` (see Step 1.5). Name specific functions with before/after complexity numbers, not vague summaries. Omit the whole section — including the `<details>` wrapper — if `smell` isn't installed or the run surfaces nothing worth a reviewer's attention.
 - **Agent Context** (inside `<details>`): Dense and specific. Include file paths, function names, key decisions, related issues by number, constraints, known limitations, and any alternatives considered. This section is intentionally collapsed for human readers; write it for an AI agent or senior engineer doing deep review.
 
 ## Workflow Steps
@@ -79,6 +87,23 @@ ls CLAUDE.md README.md 2>/dev/null
 Read `CLAUDE.md` and/or `README.md` if they exist — these provide architectural context for the Agent Context section.
 
 Determine the base branch: prefer `main`, fall back to `master`, then whatever the default is reported by `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`.
+
+### Step 1.5: Generate Focus Areas with `smell`
+
+If the `smell` CLI is installed, run it against the branch's commit range to surface complexity hotspots worth a reviewer's attention:
+
+```bash
+BASE=$(git merge-base HEAD <base-branch> 2>/dev/null)
+smell pr "${BASE}..$(git rev-parse HEAD)" . 2>/dev/null
+```
+
+Prefer the `pr` subcommand over `diff` here even though both commits are already known — `smell info diff-pr` explains that `pr` ties the report to an actual review target, which is what a reviewer-facing section needs. `smell info checks` covers the `--delta-*` flags if a swing check is also wanted; none are required by default.
+
+Before composing the Focus Areas section (Step 4), read:
+- `smell info review` — how to turn the table into reviewer-facing prose: lead with any failing `--delta-*` check in bold, then bullets for the largest complexity deltas and newly-added complex functions, each naming the function explicitly (e.g. "added complexity to `process()`, 8 to 19"). Skip removed functions and small deltas. Never paste the raw table.
+- `smell info diff-pr` — confirms `pr` vs `diff` usage and the shared flags.
+
+If `smell` is not installed, the command errors, or the output has nothing worth flagging (no deltas above noise), skip the Focus Areas section entirely — do not block the PR on it.
 
 ### Step 2: Check for an Existing PR
 
@@ -117,6 +142,12 @@ Write a complete draft using the PR body format above.
 - Derive from the diff and commit list
 - Each bullet maps to a distinct logical change, not a file or commit
 - Aim for 3 bullets; add a 4th only if there's a genuinely distinct fourth concern
+
+**Focus Areas guidance:**
+- Built from the `smell pr` output gathered in Step 1.5, formatted per `smell info review`
+- Lead with any failing `--delta-*` check, in bold, if one was configured and failed
+- Follow with bullets for the largest complexity deltas and newly-added complex functions, each naming the function and its before/after numbers explicitly
+- Omit the whole section (including the `<details>` wrapper) if Step 1.5 found nothing worth flagging or `smell` wasn't available
 
 **Agent Context guidance:**
 - Restate the goal from an engineering perspective
@@ -177,6 +208,9 @@ The gh CLI is not installed. Install it from https://cli.github.com/ then run: g
 Not authenticated with the gh CLI. Run: gh auth login
 ```
 
+**`smell` not installed or errors:**
+Skip the Focus Areas section silently — it's optional polish, not a blocker. Proceed with the rest of the PR body as normal.
+
 **Push fails:**
 Report the error output to the user. Common causes: no remote configured, authentication issues, or protected branch rules.
 
@@ -194,14 +228,16 @@ User: "Open a PR"
 Agent workflow:
 1. git log main..HEAD → 1 commit: "Fixes #42 Add dark mode toggle"
 2. git diff main..HEAD → changes in src/theme/, src/components/Toggle.tsx
-3. gh pr view → no existing PR
-4. Title: "Fixes #42 Add dark mode toggle" (first commit message preserved as-is)
-5. Draft body:
+3. smell pr main..HEAD . → Toggle.tsx's render() complexity went 4 to 11
+4. gh pr view → no existing PR
+5. Title: "Fixes #42 Add dark mode toggle" (first commit message preserved as-is)
+6. Draft body:
    - Summary: "Adds a dark mode toggle to the settings panel. Users can now switch themes without reloading."
    - Bullets: theme config, Toggle component, persistence via localStorage
+   - Focus Areas: "added complexity to `render()` in Toggle.tsx, 4 to 11"
    - Agent Context: file paths, theme system constraints, Closes #42
-6. git push --set-upstream origin feature/42-dark-mode
-7. gh pr create → https://github.com/owner/repo/pull/58
+7. git push --set-upstream origin feature/42-dark-mode
+8. gh pr create → https://github.com/owner/repo/pull/58
 ```
 
 **Example 2: Multi-commit branch with drift**
