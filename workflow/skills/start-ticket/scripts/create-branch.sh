@@ -16,6 +16,7 @@ readonly EXIT_PULL_FAILED=3
 readonly EXIT_INVALID_NAME=4
 readonly EXIT_NOT_GIT_REPO=5
 readonly EXIT_INVALID_ARGS=6
+readonly EXIT_INVALID_REPO_PATH=7
 
 # Configuration
 readonly MAX_BRANCH_LENGTH=50
@@ -23,6 +24,7 @@ readonly PRIMARY_BRANCHES=("main" "master")
 
 # Global flags
 VERBOSE=false
+REPO_PATH=""
 
 # Colors for output (if terminal supports it)
 if [[ -t 1 ]] && command -v tput >/dev/null 2>&1; then
@@ -143,6 +145,7 @@ Arguments:
   summary             Brief 2-4 word summary (auto-formatted to kebab-case)
 
 Options:
+  --repo <path>       Repository to operate on (default: current working directory)
   --verbose, -v       Enable verbose output
   --help, -h          Show this help message
 
@@ -156,6 +159,9 @@ Examples:
   $(basename "$0") add-dark-mode "dark mode support"
     → Creates: <username>-add-dark-mode-dark-mode-support
 
+  $(basename "$0") issue-46 "diff subcommand" --repo ~/repos/smell
+    → Creates the branch inside ~/repos/smell instead of the current directory
+
 Exit Codes:
   0    Success
   1    Uncommitted changes detected
@@ -164,6 +170,7 @@ Exit Codes:
   4    Invalid branch name format
   5    Not a git repository
   6    Invalid arguments
+  7    Invalid --repo path
 
 For more information, see: scripts/README.md
 EOF
@@ -172,6 +179,25 @@ EOF
 # ============================================================================
 # Validation Functions
 # ============================================================================
+
+resolve_repo_path() {
+    local repo_path="$1"
+
+    log_verbose "Resolving --repo path: $repo_path"
+
+    if [[ ! -d "$repo_path" ]]; then
+        log_error "Repo path does not exist or is not a directory: $repo_path"
+        return $EXIT_INVALID_REPO_PATH
+    fi
+
+    if ! cd "$repo_path" 2>/dev/null; then
+        log_error "Failed to change into repo path: $repo_path"
+        return $EXIT_INVALID_REPO_PATH
+    fi
+
+    log_verbose "Operating in repo path: $(pwd)"
+    return 0
+}
 
 validate_git_repo() {
     log_verbose "Checking if current directory is a git repository..."
@@ -365,13 +391,16 @@ detect_primary_branch() {
 
 switch_to_primary_branch() {
     local primary_branch="$1"
+    local checkout_output
 
     log_verbose "Switching to primary branch: $primary_branch"
 
-    if ! git checkout "$primary_branch" 2>&1 | grep -v "Already on"; then
+    if ! checkout_output=$(git checkout "$primary_branch" 2>&1); then
         log_error "Failed to switch to primary branch: $primary_branch"
+        log_error "$checkout_output"
         return 1
     fi
+    log_verbose "$checkout_output"
 
     log_verbose "Switched to $primary_branch"
     return 0
@@ -459,6 +488,16 @@ main() {
                 VERBOSE=true
                 shift
                 ;;
+            --repo)
+                if [[ -z "$2" ]]; then
+                    log_error "--repo requires a path argument"
+                    echo "" >&2
+                    show_usage
+                    exit $EXIT_INVALID_ARGS
+                fi
+                REPO_PATH="$2"
+                shift 2
+                ;;
             -*)
                 log_error "Unknown option: $1"
                 echo "" >&2
@@ -499,13 +538,18 @@ main() {
 
     log_verbose "=== Pre-flight validation ==="
 
-    # Check 1: Git repository
+    # Check 1: Repo path (defaults to the current working directory when --repo is omitted)
+    if [[ -n "$REPO_PATH" ]]; then
+        resolve_repo_path "$REPO_PATH" || exit $?
+    fi
+
+    # Check 2: Git repository
     validate_git_repo || exit $?
 
-    # Check 2: Uncommitted changes
+    # Check 3: Uncommitted changes
     check_uncommitted_changes || exit $?
 
-    # Check 3: Fetch GitHub username for branch prefix
+    # Check 4: Fetch GitHub username for branch prefix
     local BRANCH_PREFIX
     if ! BRANCH_PREFIX=$(get_github_username); then
         log_error "Failed to determine GitHub username for branch prefix"
@@ -513,12 +557,12 @@ main() {
     fi
     log_verbose "Branch prefix: $BRANCH_PREFIX"
 
-    # Check 4: Generate and validate branch name
+    # Check 5: Generate and validate branch name
     local branch_name
     branch_name=$(generate_branch_name "$ticket_identifier" "$summary" "$BRANCH_PREFIX")
     validate_branch_name "$branch_name" "$BRANCH_PREFIX" || exit $?
 
-    # Check 5: Branch already exists
+    # Check 6: Branch already exists
     check_branch_exists "$branch_name" || exit $?
 
     log_verbose "All pre-flight checks passed"

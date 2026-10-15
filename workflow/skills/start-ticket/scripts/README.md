@@ -25,6 +25,7 @@ This script consolidates the manual git workflow in the `start-ticket` skill int
 - `<summary>` - Brief 2-4 word summary describing the change
 
 **Options:**
+- `--repo <path>` - Repository to operate on. Defaults to the current working directory.
 - `--verbose`, `-v` - Enable detailed logging of all operations
 - `--help`, `-h` - Display help message and exit
 
@@ -46,6 +47,12 @@ This script consolidates the manual git workflow in the `start-ticket` skill int
 ```bash
 ./scripts/create-branch.sh issue-456 "add caching" --verbose
 # Shows detailed logs of each validation and git operation
+```
+
+**Targeting a different repo than the current working directory:**
+```bash
+./scripts/create-branch.sh issue-46 "diff subcommand" --repo ~/repos/smell
+# Creates the branch inside ~/repos/smell instead of the cwd
 ```
 
 ## Branch Naming Convention
@@ -79,8 +86,9 @@ The script uses specific exit codes for error handling:
 | 2 | Branch exists | Branch with this name already exists |
 | 3 | Pull failed | Failed to pull from remote (network/conflicts) |
 | 4 | Invalid name | Generated branch name is invalid |
-| 5 | Not a git repo | Current directory is not a git repository |
+| 5 | Not a git repo | Target directory is not a git repository |
 | 6 | Invalid arguments | Missing or incorrect arguments |
+| 7 | Invalid --repo path | The `--repo` path doesn't exist or isn't a directory |
 
 ## Integration with start-ticket Skill
 

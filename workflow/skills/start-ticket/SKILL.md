@@ -63,26 +63,31 @@ Use the `create-branch.sh` script to automate the git workflow. This script:
 
 **Script location:** `${CLAUDE_PLUGIN_ROOT}/skills/start-ticket/scripts/create-branch.sh`
 
-**IMPORTANT:** The script MUST be executed from the user's current working directory (their git repository), NOT from the skill directory. Use the full path to the script while running it from the user's current working directory.
+**IMPORTANT:** The script operates on the git repository at `--repo <path>` when given, and otherwise on the current working directory — same as the script is invoked, there's no need to `cd` first. Use the full path to the script itself regardless of which repo it targets.
 
 **Usage:**
 ```bash
-${CLAUDE_PLUGIN_ROOT}/skills/start-ticket/scripts/create-branch.sh <ticket-identifier> <summary>
+${CLAUDE_PLUGIN_ROOT}/skills/start-ticket/scripts/create-branch.sh <ticket-identifier> <summary> [--repo <path>]
 ```
 
 **Arguments:**
 - `<ticket-identifier>`: The ticket key (e.g., issue-123) or a descriptive slug
 - `<summary>`: A brief 2-4 word summary (will be auto-formatted to kebab-case)
+- `--repo <path>` (optional): The repository to create the branch in. Defaults to the current working directory. Use this when the ticket's issue lives in a different repo than the one the agent is currently sitting in — e.g. a GitHub issue URL whose `owner/repo` doesn't match the cwd's remote.
 
 **Examples:**
 ```bash
-# GitHub issue-123 "Fix user login error"
+# GitHub issue-123 "Fix user login error" (current working directory is the right repo)
 ${CLAUDE_PLUGIN_ROOT}/skills/start-ticket/scripts/create-branch.sh issue-123 "fix user login error"
 # Creates: <username>-issue-123-fix-user-login-error
 
 # Plain ticket "Add dark mode"
 ${CLAUDE_PLUGIN_ROOT}/skills/start-ticket/scripts/create-branch.sh add-dark-mode "dark mode support"
 # Creates: <username>-add-dark-mode-dark-mode-support
+
+# Issue lives in a different repo than the current working directory
+${CLAUDE_PLUGIN_ROOT}/skills/start-ticket/scripts/create-branch.sh issue-46 "diff subcommand" --repo /path/to/other-repo
+# Creates the branch inside /path/to/other-repo instead of the cwd
 ```
 
 **The script automatically formats branch names:**
@@ -113,6 +118,7 @@ The `create-branch.sh` script uses exit codes to indicate specific error conditi
 - `4` - Invalid branch name format
 - `5` - Not a git repository
 - `6` - Invalid arguments
+- `7` - Invalid `--repo` path (doesn't exist or isn't a directory)
 
 **Exit Code 1 - Uncommitted Changes:**
 The script detected uncommitted changes. Present these options to the user:
@@ -168,6 +174,13 @@ Missing or incorrect arguments. This shouldn't happen if the skill provides the 
 ```
 Invalid arguments provided to create-branch.sh script.
 Both ticket identifier and summary are required.
+```
+
+**Exit Code 7 - Invalid --repo Path:**
+The path passed to `--repo` doesn't exist or isn't a directory. Confirm the path and retry:
+```
+The repo path '<path>' doesn't exist or isn't a directory.
+Please provide a valid path to a local git checkout.
 ```
 
 ## Branch Naming Guidelines
