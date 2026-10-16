@@ -43,7 +43,7 @@ Every PR body produced by this skill MUST follow this exact structure — no dev
 <details>
 <summary>Focus Areas</summary>
 
-<Reviewer-facing hotspots. Lead with any changed dependency manifest/lock files, in bold, if present. Then any failing --delta-* check from `smell pr`, in bold. Then bullets naming specific functions — each one linked to its location in the diff via a GitHub permalink, not just named — with their before/after complexity numbers, formatted per `smell info review`. Omit this whole section only if there are no dependency file changes and `smell` isn't available or reports nothing worth flagging.>
+<Always present — tells the reviewer where to actually look, even when the answer is "nothing complicated." Lead with any changed dependency manifest/lock files, in bold, if present. Then any failing --delta-* check from `smell pr`, in bold. Then orient the reviewer to the diff itself, in one of three modes depending on what `smell pr` shows (see Step 1.6/1.7): hotspot mode (real complexity deltas — bullets naming specific functions, each a GitHub permalink, with before/after numbers), new-file mode (the diff is new files with nothing to diff against — one line per file naming what it's for plus a permalink to its "meat" function), or low-complexity mode (modified files, nothing above noise — say so explicitly, then still permalink the 1-2 functions most central to the change).>
 
 </details>
 
@@ -59,7 +59,7 @@ Every PR body produced by this skill MUST follow this exact structure — no dev
 
 - **Summary**: 1-2 sentences max. State what changed and why it matters. No jargon, no bullets. A non-technical reviewer should understand the intent at a glance.
 - **Bullets**: 3-4 items. High-level *what* — not *how*. One complete thought per bullet. Avoid "we", "I", or action verbs like "I added"; keep them declarative ("New retry logic for flaky network calls").
-- **Focus Areas** (inside `<details>`): Generated from dependency-file detection (see Step 1.5) and `smell pr` (see Step 1.6). Lead with dependency file changes, then any failing `--delta-*` check, then specific functions with before/after complexity numbers — each function name a GitHub permalink to its location in the diff (see Step 1.7), not vague summaries. Omit the whole section — including the `<details>` wrapper — only if no dependency files changed *and* `smell` isn't installed or the run surfaces nothing worth a reviewer's attention.
+- **Focus Areas** (inside `<details>`): Always included — never omit this section. Generated from dependency-file detection (see Step 1.5) and `smell pr` (see Step 1.6). Lead with dependency file changes, then any failing `--delta-*` check. Past that, pick whichever of the three modes in Step 1.6 fits what `smell` actually showed (hotspot / new-file / low-complexity) and write that mode's content — the section's job is to orient a reviewer to where to look, and "this is a small, low-risk diff" is itself useful orientation, not a reason to say nothing.
 - **Agent Context** (inside `<details>`): Dense and specific. Include file paths, function names, key decisions, related issues by number, constraints, known limitations, and any alternatives considered. This section is intentionally collapsed for human readers; write it for an AI agent or senior engineer doing deep review.
 
 ## Workflow Steps
@@ -110,34 +110,38 @@ Match by filename regardless of directory depth (e.g. `crates/foo/Cargo.toml` co
 
 ### Step 1.6: Generate Focus Areas with `smell`
 
-If the `smell` CLI is installed, run it against the branch's commit range to surface complexity hotspots worth a reviewer's attention:
+If the `smell` CLI is installed, run it scoped to the files the branch actually touched — **not** the whole repo (passing `.` reports every file `smell` can see, burying the diff's own functions under pages of "N unchanged function(s) omitted" for files that never changed):
 
 ```bash
 BASE=$(git merge-base HEAD <base-branch> 2>/dev/null)
-smell pr "${BASE}..$(git rev-parse HEAD)" . 2>/dev/null
+HEAD_SHA=$(git rev-parse HEAD)
+CHANGED=$(git diff --name-only "${BASE}..${HEAD_SHA}")
+smell pr "${BASE}..${HEAD_SHA}" $CHANGED 2>/dev/null
 ```
 
 Prefer the `pr` subcommand over `diff` here even though both commits are already known — `smell info diff-pr` explains that `pr` ties the report to an actual review target, which is what a reviewer-facing section needs. `smell info checks` covers the `--delta-*` flags if a swing check is also wanted; none are required by default.
 
-Before composing the Focus Areas section (Step 4), read:
-- `smell info review` — how to turn the table into reviewer-facing prose: lead with any failing `--delta-*` check in bold, then bullets for the largest complexity deltas and newly-added complex functions, each naming the function explicitly (e.g. "added complexity to `process()`, 8 to 19"). Skip removed functions and small deltas. Never paste the raw table.
-- `smell info diff-pr` — confirms `pr` vs `diff` usage and the shared flags.
+Before composing the Focus Areas section (Step 4), read `smell info review` and `smell info diff-pr` for how to read the table, then classify the output into exactly one of three modes:
 
-If `smell` is not installed or the command errors, note that and move on — it only blocks the `smell`-derived part of Focus Areas, not the dependency-file bullet from Step 1.5.
+- **Hotspot mode** — one or more functions show a real complexity delta (an `unchanged`/`modified` row with before and after both present and the swing above noise), or a newly-`added` function's complexity is itself high. This is the common case `smell info review` already covers: lead with any failing `--delta-*` check in bold, then bullets for the largest deltas and newly-added complex functions, each naming the function explicitly (e.g. "added complexity to `process()`, 8 to 19"). Skip removed functions and small deltas. Never paste the raw table.
+- **New-file mode** — the changed files are new (every row is `added`, no `before` value anywhere, because there's nothing to diff against) and nothing in the hotspot sense applies. Don't try to force a complexity narrative onto brand-new code; instead read each new file and write one line per file: what it's for, and a pointer to its "meat" — the function doing the real work, not a test helper or a trivial constructor. Prefer the file's own public entry point(s) (the `pub fn`/`pub struct` a caller would actually reach for) over picking whichever function happens to have the highest complexity number, though that's often the same thing.
+- **Low-complexity mode** — files were modified (not just added), and nothing clears the hotspot bar. Say that plainly (e.g. "Low-complexity change — nothing structurally complex here") rather than implying there's nothing to look at, then still name the 1-2 functions most central to the change (the ones carrying the actual new logic, not incidental reformatting) with a permalink each, so the reviewer has a concrete starting point.
+
+A single PR can mix new and modified files — apply new-file mode to the new ones and low-complexity/hotspot mode to the modified ones in the same section rather than forcing one mode for the whole diff.
+
+If `smell` is not installed or the command errors, fall back to doing this by hand from the diff and file list alone: still pick new-file or low-complexity framing based on `git diff --name-only` + `git diff --stat`, and still name the central function(s) by reading the diff — the absence of `smell` removes the complexity *numbers*, not the obligation to orient the reviewer.
 
 ### Step 1.7: Link Named Functions to Their Code
 
-`smell` doesn't track line numbers, so turn each function name from Step 1.6 into a clickable GitHub permalink before writing the Focus Areas bullet:
+Whether a function was named because `smell` flagged it (hotspot mode) or because it was chosen by hand as a file's "meat" or most-central logic (new-file/low-complexity mode), turn its name into a clickable GitHub permalink before writing the Focus Areas bullet — `smell` doesn't track line numbers, so this step is always manual:
 
 1. Get `owner/repo` by parsing it out of the `git remote get-url origin` result from Step 1.
 2. Get the commit SHA the PR will point at: `git rev-parse HEAD` (this is the SHA that will exist on the remote once Step 5 pushes).
-3. For each flagged function in a file, find its declaration line in the **new** revision: `git grep -n -w '<function_name>' HEAD -- <path>` and take the first match's line number. (For a method, narrow the search by also grepping the enclosing type name if the function name alone matches multiple lines.)
+3. For each named function in a file, find its declaration line in the **new** revision: `git grep -n -w '<function_name>' HEAD -- <path>` and take the first match's line number. (For a method, narrow the search by also grepping the enclosing type name if the function name alone matches multiple lines.)
 4. Build the permalink: `https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<line>`
 5. Use it as the link target for the function name in the Focus Areas bullet, e.g. `added complexity to [process()](https://github.com/acme/widgets/blob/a1b2c3d/src/pipeline.rs#L42), 8 to 19` instead of a bare backtick mention.
 
 If a line can't be confidently located (ambiguous match, generated file, etc.), fall back to naming the function in backticks without a link rather than guessing — do not link to the wrong line.
-
-If `smell` is not installed, the command errors, or the output has nothing worth flagging (no deltas above noise), skip the `smell`-derived bullets of Focus Areas — the dependency-file bullet from Step 1.5, if any, still stands on its own.
 
 ### Step 2: Check for an Existing PR
 
@@ -178,10 +182,14 @@ Write a complete draft using the PR body format above.
 - Aim for 3 bullets; add a 4th only if there's a genuinely distinct fourth concern
 
 **Focus Areas guidance:**
+- Never omit this section, and never leave it as a bare empty `<details>` block — there is always at least a one-line orientation to give.
 - If Step 1.5 matched any dependency manifest/lock files, lead with a bold bullet naming them, e.g. **Dependency files changed:** `Cargo.toml`, `Cargo.lock`
 - Next, any failing `--delta-*` check, in bold, if one was configured and failed
-- Then bullets for the largest complexity deltas and newly-added complex functions from the `smell pr` output (Step 1.6), formatted per `smell info review` — each function name linked to its GitHub permalink from Step 1.7 instead of a bare mention, with before/after numbers explicit
-- Omit the whole section (including the `<details>` wrapper) only if Step 1.5 found no dependency file changes *and* Step 1.6 found nothing worth flagging or `smell` wasn't available
+- Then write according to whichever mode Step 1.6 landed on:
+  - **Hotspot mode**: bullets for the largest complexity deltas and newly-added complex functions, formatted per `smell info review` — each function name linked to its GitHub permalink from Step 1.7, with before/after numbers explicit.
+  - **New-file mode**: one line per new file — its purpose, then a permalink (from Step 1.7) to the function that's the "meat" of it. Skip files that are pure boilerplate (e.g. a bare `mod.rs`-equivalent that only re-exports) rather than padding the list.
+  - **Low-complexity mode**: one explicit sentence that this is a low-complexity change, then permalinks (from Step 1.7) to the 1-2 functions most central to it.
+- A diff with both new and modified files gets both new-file and low-complexity/hotspot bullets in the same section, not one mode forced over everything.
 
 **Agent Context guidance:**
 - Restate the goal from an engineering perspective
@@ -243,7 +251,7 @@ Not authenticated with the gh CLI. Run: gh auth login
 ```
 
 **`smell` not installed or errors:**
-Skip the `smell`-derived part of Focus Areas silently — it's optional polish, not a blocker. Proceed with the rest of the PR body as normal; a dependency-file bullet from Step 1.5, if any, is unaffected and still included.
+Not a blocker, and not a reason to skip Focus Areas — fall back to the by-hand orientation described at the end of Step 1.6 (new-file or low-complexity framing from the diff/file list alone, without complexity numbers). A dependency-file bullet from Step 1.5, if any, is unaffected and still included either way.
 
 **No line match when linking a function (Step 1.7):**
 Fall back to a bare `` `function()` `` mention with no link rather than guessing a line number.
@@ -303,4 +311,29 @@ Agent workflow:
 2. Inform user: "PR #31 is already open (https://github.com/.../pull/31). Updating the description."
 3. Draft new description from current diff
 4. gh pr edit 31
+```
+
+**Example 4: New-file mode (nothing to diff against)**
+```
+User: "Open a PR"
+
+Agent workflow:
+1. git diff --name-only main..HEAD → src/cache/lru.rs (new), src/cache/mod.rs (new), src/cache.rs (modified, adds `pub mod cache;`)
+2. smell pr main..HEAD src/cache/lru.rs src/cache/mod.rs src/cache.rs → every row in lru.rs/mod.rs is `added`, no `before` value anywhere — new-file mode for those two, low-complexity mode for cache.rs (one-line mod declaration)
+3. git grep -n -w evict HEAD -- src/cache/lru.rs → line 58; permalink built from that + HEAD sha
+4. Focus Areas:
+   - "`src/cache/lru.rs` is the new LRU eviction policy — the real logic is in [evict()](https://github.com/owner/repo/blob/abc123/src/cache/lru.rs#L58)."
+   - "`src/cache/mod.rs` just wires the new cache into the existing store trait — [CacheStore::get()](https://github.com/owner/repo/blob/abc123/src/cache/mod.rs#L12) is the one method worth a look."
+   - "Low-complexity change to `src/cache.rs` — just the new `pub mod cache;` declaration."
+```
+
+**Example 5: Low-complexity mode (modified files, nothing above noise)**
+```
+User: "Create a PR"
+
+Agent workflow:
+1. git diff --name-only main..HEAD → src/auth/session.rs (modified)
+2. smell pr main..HEAD src/auth/session.rs → one function's complexity moved 2 to 3 — below any delta worth a hotspot bullet
+3. git grep -n -w refresh_token HEAD -- src/auth/session.rs → line 90
+4. Focus Areas: "Low-complexity change — nothing structurally complex here. The one function touched is [refresh_token()](https://github.com/owner/repo/blob/def456/src/auth/session.rs#L90), which now also clears the old token before issuing a new one."
 ```
