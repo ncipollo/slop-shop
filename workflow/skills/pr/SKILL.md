@@ -43,7 +43,7 @@ Every PR body produced by this skill MUST follow this exact structure — no dev
 <details>
 <summary>Focus Areas</summary>
 
-<Reviewer-facing complexity hotspots derived from `smell pr` output, formatted per `smell info review`. Lead with any failing --delta-* check, in bold, if present. Then bullets naming specific functions and their before/after complexity numbers. Omit this whole section if `smell` isn't available or reports nothing worth flagging.>
+<Reviewer-facing hotspots. Lead with any changed dependency manifest/lock files, in bold, if present. Then any failing --delta-* check from `smell pr`, in bold. Then bullets naming specific functions — each one linked to its location in the diff via a GitHub permalink, not just named — with their before/after complexity numbers, formatted per `smell info review`. Omit this whole section only if there are no dependency file changes and `smell` isn't available or reports nothing worth flagging.>
 
 </details>
 
@@ -59,7 +59,7 @@ Every PR body produced by this skill MUST follow this exact structure — no dev
 
 - **Summary**: 1-2 sentences max. State what changed and why it matters. No jargon, no bullets. A non-technical reviewer should understand the intent at a glance.
 - **Bullets**: 3-4 items. High-level *what* — not *how*. One complete thought per bullet. Avoid "we", "I", or action verbs like "I added"; keep them declarative ("New retry logic for flaky network calls").
-- **Focus Areas** (inside `<details>`): Generated from `smell pr` (see Step 1.5). Name specific functions with before/after complexity numbers, not vague summaries. Omit the whole section — including the `<details>` wrapper — if `smell` isn't installed or the run surfaces nothing worth a reviewer's attention.
+- **Focus Areas** (inside `<details>`): Generated from dependency-file detection (see Step 1.5) and `smell pr` (see Step 1.6). Lead with dependency file changes, then any failing `--delta-*` check, then specific functions with before/after complexity numbers — each function name a GitHub permalink to its location in the diff (see Step 1.7), not vague summaries. Omit the whole section — including the `<details>` wrapper — only if no dependency files changed *and* `smell` isn't installed or the run surfaces nothing worth a reviewer's attention.
 - **Agent Context** (inside `<details>`): Dense and specific. Include file paths, function names, key decisions, related issues by number, constraints, known limitations, and any alternatives considered. This section is intentionally collapsed for human readers; write it for an AI agent or senior engineer doing deep review.
 
 ## Workflow Steps
@@ -77,6 +77,9 @@ git log --oneline $(git merge-base HEAD main 2>/dev/null || git merge-base HEAD 
 # Full diff for understanding the changes
 git diff $(git merge-base HEAD main 2>/dev/null || git merge-base HEAD master 2>/dev/null)..HEAD 2>/dev/null || git diff HEAD~1..HEAD
 
+# Names of changed files (used in Step 1.5 to detect dependency file changes)
+git diff --name-only $(git merge-base HEAD main 2>/dev/null || git merge-base HEAD master 2>/dev/null)..HEAD 2>/dev/null || git diff --name-only HEAD~1..HEAD
+
 # Check if a PR already exists for this branch
 gh pr view --json number,title,body,url 2>/dev/null || echo "(no existing PR)"
 
@@ -88,7 +91,24 @@ Read `CLAUDE.md` and/or `README.md` if they exist — these provide architectura
 
 Determine the base branch: prefer `main`, fall back to `master`, then whatever the default is reported by `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`.
 
-### Step 1.5: Generate Focus Areas with `smell`
+### Step 1.5: Detect Dependency File Changes
+
+Check the changed-file list from Step 1 against known dependency manifest/lock files:
+
+```
+Cargo.toml, Cargo.lock                              (Rust)
+package.json, package-lock.json, yarn.lock, pnpm-lock.yaml   (JS/TS)
+go.mod, go.sum                                      (Go)
+requirements.txt, Pipfile, Pipfile.lock, poetry.lock, pyproject.toml  (Python)
+Gemfile, Gemfile.lock                               (Ruby)
+pom.xml, build.gradle, build.gradle.kts             (Java/Kotlin)
+composer.json, composer.lock                        (PHP)
+mix.exs, mix.lock                                   (Elixir)
+```
+
+Match by filename regardless of directory depth (e.g. `crates/foo/Cargo.toml` counts). If any matched, note the matched paths for the Focus Areas section (Step 4) — dependency bumps change behavior in ways a diff alone doesn't surface, so they're always worth flagging even when `smell` has nothing to say.
+
+### Step 1.6: Generate Focus Areas with `smell`
 
 If the `smell` CLI is installed, run it against the branch's commit range to surface complexity hotspots worth a reviewer's attention:
 
@@ -103,7 +123,21 @@ Before composing the Focus Areas section (Step 4), read:
 - `smell info review` — how to turn the table into reviewer-facing prose: lead with any failing `--delta-*` check in bold, then bullets for the largest complexity deltas and newly-added complex functions, each naming the function explicitly (e.g. "added complexity to `process()`, 8 to 19"). Skip removed functions and small deltas. Never paste the raw table.
 - `smell info diff-pr` — confirms `pr` vs `diff` usage and the shared flags.
 
-If `smell` is not installed, the command errors, or the output has nothing worth flagging (no deltas above noise), skip the Focus Areas section entirely — do not block the PR on it.
+If `smell` is not installed or the command errors, note that and move on — it only blocks the `smell`-derived part of Focus Areas, not the dependency-file bullet from Step 1.5.
+
+### Step 1.7: Link Named Functions to Their Code
+
+`smell` doesn't track line numbers, so turn each function name from Step 1.6 into a clickable GitHub permalink before writing the Focus Areas bullet:
+
+1. Get `owner/repo` by parsing it out of the `git remote get-url origin` result from Step 1.
+2. Get the commit SHA the PR will point at: `git rev-parse HEAD` (this is the SHA that will exist on the remote once Step 5 pushes).
+3. For each flagged function in a file, find its declaration line in the **new** revision: `git grep -n -w '<function_name>' HEAD -- <path>` and take the first match's line number. (For a method, narrow the search by also grepping the enclosing type name if the function name alone matches multiple lines.)
+4. Build the permalink: `https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<line>`
+5. Use it as the link target for the function name in the Focus Areas bullet, e.g. `added complexity to [process()](https://github.com/acme/widgets/blob/a1b2c3d/src/pipeline.rs#L42), 8 to 19` instead of a bare backtick mention.
+
+If a line can't be confidently located (ambiguous match, generated file, etc.), fall back to naming the function in backticks without a link rather than guessing — do not link to the wrong line.
+
+If `smell` is not installed, the command errors, or the output has nothing worth flagging (no deltas above noise), skip the `smell`-derived bullets of Focus Areas — the dependency-file bullet from Step 1.5, if any, still stands on its own.
 
 ### Step 2: Check for an Existing PR
 
@@ -144,10 +178,10 @@ Write a complete draft using the PR body format above.
 - Aim for 3 bullets; add a 4th only if there's a genuinely distinct fourth concern
 
 **Focus Areas guidance:**
-- Built from the `smell pr` output gathered in Step 1.5, formatted per `smell info review`
-- Lead with any failing `--delta-*` check, in bold, if one was configured and failed
-- Follow with bullets for the largest complexity deltas and newly-added complex functions, each naming the function and its before/after numbers explicitly
-- Omit the whole section (including the `<details>` wrapper) if Step 1.5 found nothing worth flagging or `smell` wasn't available
+- If Step 1.5 matched any dependency manifest/lock files, lead with a bold bullet naming them, e.g. **Dependency files changed:** `Cargo.toml`, `Cargo.lock`
+- Next, any failing `--delta-*` check, in bold, if one was configured and failed
+- Then bullets for the largest complexity deltas and newly-added complex functions from the `smell pr` output (Step 1.6), formatted per `smell info review` — each function name linked to its GitHub permalink from Step 1.7 instead of a bare mention, with before/after numbers explicit
+- Omit the whole section (including the `<details>` wrapper) only if Step 1.5 found no dependency file changes *and* Step 1.6 found nothing worth flagging or `smell` wasn't available
 
 **Agent Context guidance:**
 - Restate the goal from an engineering perspective
@@ -209,7 +243,10 @@ Not authenticated with the gh CLI. Run: gh auth login
 ```
 
 **`smell` not installed or errors:**
-Skip the Focus Areas section silently — it's optional polish, not a blocker. Proceed with the rest of the PR body as normal.
+Skip the `smell`-derived part of Focus Areas silently — it's optional polish, not a blocker. Proceed with the rest of the PR body as normal; a dependency-file bullet from Step 1.5, if any, is unaffected and still included.
+
+**No line match when linking a function (Step 1.7):**
+Fall back to a bare `` `function()` `` mention with no link rather than guessing a line number.
 
 **Push fails:**
 Report the error output to the user. Common causes: no remote configured, authentication issues, or protected branch rules.
@@ -227,17 +264,19 @@ User: "Open a PR"
 
 Agent workflow:
 1. git log main..HEAD → 1 commit: "Fixes #42 Add dark mode toggle"
-2. git diff main..HEAD → changes in src/theme/, src/components/Toggle.tsx
-3. smell pr main..HEAD . → Toggle.tsx's render() complexity went 4 to 11
-4. gh pr view → no existing PR
-5. Title: "Fixes #42 Add dark mode toggle" (first commit message preserved as-is)
-6. Draft body:
+2. git diff --name-only main..HEAD → src/theme/config.ts, src/components/Toggle.tsx, package.json, package-lock.json
+3. Dependency check (Step 1.5) → package.json/package-lock.json changed
+4. smell pr main..HEAD . → Toggle.tsx's render() complexity went 4 to 11
+5. git grep -n -w render HEAD -- src/components/Toggle.tsx → line 42; sha = git rev-parse HEAD
+6. gh pr view → no existing PR
+7. Title: "Fixes #42 Add dark mode toggle" (first commit message preserved as-is)
+8. Draft body:
    - Summary: "Adds a dark mode toggle to the settings panel. Users can now switch themes without reloading."
    - Bullets: theme config, Toggle component, persistence via localStorage
-   - Focus Areas: "added complexity to `render()` in Toggle.tsx, 4 to 11"
+   - Focus Areas: "**Dependency files changed:** `package.json`, `package-lock.json`" then "added complexity to [render()](https://github.com/owner/repo/blob/a1b2c3d/src/components/Toggle.tsx#L42) in Toggle.tsx, 4 to 11"
    - Agent Context: file paths, theme system constraints, Closes #42
-7. git push --set-upstream origin feature/42-dark-mode
-8. gh pr create → https://github.com/owner/repo/pull/58
+9. git push --set-upstream origin feature/42-dark-mode
+10. gh pr create → https://github.com/owner/repo/pull/58
 ```
 
 **Example 2: Multi-commit branch with drift**
