@@ -240,21 +240,27 @@ main() {
     log_verbose "should_fix: $should_fix"
 
     # Step 8: Output JSON to stdout
-    python3 - "$should_fix" "$issue_number" "$current_branch" "$default_branch" "$commits_on_branch" <<'PYEOF'
-import json, sys
+    #
+    # Built by hand instead of shelling out to a JSON library, since every
+    # value here is already known and safe to interpolate: should_fix is the
+    # literal string "true"/"false", commits_on_branch and issue_number (when
+    # present) are digit-only from git/regex output, and branch/default_branch
+    # are git ref names, which git itself forbids from containing '"', '\', or
+    # control characters (see `git check-ref-format`).
+    local issue_number_json="null"
+    if [[ -n "$issue_number" ]]; then
+        issue_number_json="$issue_number"
+    fi
 
-should_fix_str, issue_number_str, branch, default_branch, commits_str = sys.argv[1:]
-
-data = {
-    "should_fix": should_fix_str == "true",
-    "issue_number": int(issue_number_str) if issue_number_str else None,
-    "branch": branch,
-    "default_branch": default_branch,
-    "commits_on_branch": int(commits_str)
+    cat <<JSONEOF
+{
+  "should_fix": $should_fix,
+  "issue_number": $issue_number_json,
+  "branch": "$current_branch",
+  "default_branch": "$default_branch",
+  "commits_on_branch": $commits_on_branch
 }
-
-print(json.dumps(data, indent=2))
-PYEOF
+JSONEOF
 
     exit $EXIT_SUCCESS
 }
